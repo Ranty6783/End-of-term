@@ -8,7 +8,7 @@ let grid = [];
 let currentPiece = null;
 let gameRunning = true;
 let lastDropTime = 0;
-let currentCommand = '--';
+let command = 'IDLE';
 let commandTimestamp = 0;
 let handModelReady = false;
 let handDetected = false;
@@ -183,10 +183,14 @@ const cameraSketch = (p) => {
   let statusText;
   let gestureText;
   let commandText;
-  let lastLRTime = 0;
   let lastRotateTime = 0;
-  const LR_COOLDOWN = 200;
-  const ROTATE_COOLDOWN = 500;
+  const ROTATE_COOLDOWN = 300;
+  const ROTATE_FRAME_THRESHOLD = 3;
+  const LR_FRAME_THRESHOLD = 2;
+  let rotateFrameCount = 0;
+  let leftFrameCount = 0;
+  let rightFrameCount = 0;
+  let lastDetected = 'NONE';
 
   p.setup = function() {
     p.pixelDensity(1);
@@ -231,32 +235,61 @@ const cameraSketch = (p) => {
 
       const now = p.millis();
 
-      if (detected === 'RIGHT_TILT') {
-        if (now - lastLRTime > LR_COOLDOWN) {
-          currentCommand = 'RIGHT';
-          lastLRTime = now;
-          commandTimestamp = now;
-        }
-      } else if (detected === 'LEFT_TILT') {
-        if (now - lastLRTime > LR_COOLDOWN) {
-          currentCommand = 'LEFT';
-          lastLRTime = now;
-          commandTimestamp = now;
-        }
+      // Reset frame counters if gesture changes
+      if (detected !== lastDetected) {
+        rotateFrameCount = 0;
+        leftFrameCount = 0;
+        rightFrameCount = 0;
+        lastDetected = detected;
       }
 
+      // Priority 1: ROTATE (握拳)
       if (detected === 'CLOSE_PALM') {
-        if (now - lastRotateTime > ROTATE_COOLDOWN) {
-          currentCommand = 'ROTATE';
-          lastRotateTime = now;
+        rotateFrameCount++;
+        if (rotateFrameCount >= ROTATE_FRAME_THRESHOLD && now - lastRotateTime > ROTATE_COOLDOWN) {
+          command = 'ROTATE';
           commandTimestamp = now;
+          lastRotateTime = now;
+          rotateFrameCount = 0;
         }
+      } else {
+        rotateFrameCount = 0;
+      }
+
+      // Priority 2: LEFT/RIGHT (only if not rotating)
+      if (command !== 'ROTATE') {
+        if (detected === 'LEFT_TILT') {
+          leftFrameCount++;
+          rightFrameCount = 0;
+          if (leftFrameCount >= LR_FRAME_THRESHOLD) {
+            command = 'LEFT';
+            commandTimestamp = now;
+            leftFrameCount = 0;
+          }
+        } else if (detected === 'RIGHT_TILT') {
+          rightFrameCount++;
+          leftFrameCount = 0;
+          if (rightFrameCount >= LR_FRAME_THRESHOLD) {
+            command = 'RIGHT';
+            commandTimestamp = now;
+            rightFrameCount = 0;
+          }
+        } else {
+          leftFrameCount = 0;
+          rightFrameCount = 0;
+        }
+      } else {
+        leftFrameCount = 0;
+        rightFrameCount = 0;
       }
     } else {
       gestureText.html('手勢：未偵測到手部');
+      rotateFrameCount = 0;
+      leftFrameCount = 0;
+      rightFrameCount = 0;
     }
 
-    if (commandText) commandText.html('輸出：' + currentCommand);
+    if (commandText) commandText.html('輸出：' + command);
   };
 
   function modelReady() {
@@ -380,15 +413,15 @@ const gameSketch = (p) => {
       }
     }
     
-    if (currentCommand === 'LEFT' && commandTimestamp > 0) {
+    if (command === 'LEFT' && commandTimestamp > 0) {
       currentPiece.moveLeft();
-      currentCommand = '--';
-    } else if (currentCommand === 'RIGHT' && commandTimestamp > 0) {
+      command = 'IDLE';
+    } else if (command === 'RIGHT' && commandTimestamp > 0) {
       currentPiece.moveRight();
-      currentCommand = '--';
-    } else if (currentCommand === 'ROTATE' && commandTimestamp > 0) {
+      command = 'IDLE';
+    } else if (command === 'ROTATE' && commandTimestamp > 0) {
       currentPiece.rotate();
-      currentCommand = '--';
+      command = 'IDLE';
     }
     
     if (currentPiece) {

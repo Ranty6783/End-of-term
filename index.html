@@ -3,17 +3,25 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>攝影機手勢辨識</title>
+    <title>俄羅斯方塊 + 手勢辨識</title>
     <link rel="stylesheet" type="text/css" href="style.css">
     <script src="libraries/p5.min.js"></script>
     <script src="libraries/ml5.min.js"></script>
   </head>
   <body>
-    <div id="ui">
-      <h1>攝影機手勢辨識</h1>
-      <p id="status">載入中，請允許相機存取...</p>
-      <p id="gesture">手勢：--</p>
-      <p id="command">輸出：--</p>
+    <div class="container">
+      <div id="camera-section">
+        <div id="camera-container"></div>
+        <div id="ui">
+          <h2>手勢辨識</h2>
+          <p id="status">載入中，請允許相機存取...</p>
+          <p id="gesture">手勢：--</p>
+          <p id="command">輸出：--</p>
+        </div>
+      </div>
+      <div id="game-section">
+        <div id="game-container"></div>
+      </div>
     </div>
     <script src="sketch.js"></script>
   </body>

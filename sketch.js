@@ -3,6 +3,11 @@ let handposeModel;
 let predictions = [];
 let statusText;
 let gestureText;
+let commandText;
+let currentCommand = '--';
+let lastLRTime = 0;
+const LR_COOLDOWN = 200; // ms
+let commandTimestamp = 0;
 
 function setup() {
   const canvas = createCanvas(640, 480);
@@ -14,6 +19,7 @@ function setup() {
 
   statusText = select('#status');
   gestureText = select('#gesture');
+  commandText = select('#command');
 
   statusText.html('載入手勢模型…');
   handposeModel = ml5.handpose(video, modelReady);
@@ -23,6 +29,7 @@ function setup() {
 function draw() {
   background(40);
 
+  // Mirror the canvas so the view feels natural to the user
   push();
   translate(width, 0);
   scale(-1, 1);
@@ -33,12 +40,39 @@ function draw() {
   }
   pop();
 
+  // Gesture detection and state machine (use prediction coordinates)
   if (predictions.length > 0) {
-    const gesture = recognizeGesture(predictions[0]);
-    gestureText.html('手勢：' + gesture);
+    const detected = detectGestureState(predictions[0]);
+    gestureText.html('手勢：' + detected);
+
+    const now = millis();
+
+    // LEFT/RIGHT with 200ms debounce (variable names swapped)
+    if (detected === 'RIGHT_TILT') {
+      if (now - lastLRTime > LR_COOLDOWN) {
+        currentCommand = 'RIGHT';
+        lastLRTime = now;
+        commandTimestamp = now;
+      }
+    } else if (detected === 'LEFT_TILT') {
+      if (now - lastLRTime > LR_COOLDOWN) {
+        currentCommand = 'LEFT';
+        lastLRTime = now;
+        commandTimestamp = now;
+      }
+    }
+
+    // CLOSE_PALM -> ROTATE (no extra debounce)
+    if (detected === 'CLOSE_PALM') {
+      currentCommand = 'ROTATE';
+      commandTimestamp = now;
+    }
   } else {
     gestureText.html('手勢：未偵測到手部');
   }
+
+  // Update UI command display (left-top panel)
+  if (commandText) commandText.html('輸出：' + currentCommand);
 }
 
 function modelReady() {
@@ -76,16 +110,18 @@ function drawHand(prediction) {
   }
 }
 
-function recognizeGesture(prediction) {
+// Detect gesture state returning one of: LEFT_TILT, RIGHT_TILT, V_SIGN, CLOSE_PALM, NONE
+function detectGestureState(prediction) {
   const landmarks = prediction.landmarks;
+
+  // finger extension test (tip vs mcp)
   const fingers = [4, 8, 12, 16, 20];
   const mcp = [2, 5, 9, 13, 17];
   const extended = [];
-
   for (let i = 0; i < fingers.length; i++) {
     const tip = landmarks[fingers[i]];
-    const pip = landmarks[mcp[i]];
-    extended.push(tip[1] < pip[1]);
+    const base = landmarks[mcp[i]];
+    extended.push(tip[1] < base[1]);
   }
 
   const thumbExtended = extended[0];
@@ -94,18 +130,28 @@ function recognizeGesture(prediction) {
   const ringExtended = extended[3];
   const pinkyExtended = extended[4];
 
-  if (indexExtended && middleExtended && !ringExtended && !pinkyExtended && !thumbExtended) {
-    return 'V 字手勢 (和平)';
-  }
-  if (thumbExtended && !indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-    return '大拇指朝上';
-  }
-  if (indexExtended && middleExtended && ringExtended && pinkyExtended && thumbExtended) {
-    return '張開手掌';
-  }
+  // V_SIGN removed per request
+
+  // Closed palm (fist): fingers not extended
   if (!indexExtended && !middleExtended && !ringExtended && !pinkyExtended) {
-    return '握拳';
+    return 'CLOSE_PALM';
   }
 
-  return '未知手勢';
+  // Palm tilt: compare index_mcp (5) and pinky_mcp (17) in visual (mirrored) x
+  // Because canvas is mirrored for display, compute visual delta as index.x - pinky.x
+  const index_mcp = landmarks[5];
+  const pinky_mcp = landmarks[17];
+  const deltaX_visual = index_mcp[0] - pinky_mcp[0];
+  const TILT_THRESHOLD = 40; // pixels, tweakable
+  // swap the returned label names (only names swapped)
+  if (deltaX_visual > TILT_THRESHOLD) {
+    return 'RIGHT_TILT';
+  }
+  if (deltaX_visual < -TILT_THRESHOLD) {
+    return 'LEFT_TILT';
+  }
+
+  return 'NONE';
 }
+
+

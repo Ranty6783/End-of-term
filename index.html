@@ -3,16 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <title>Sketch</title>
-
+    <title>攝影機手勢辨識</title>
     <link rel="stylesheet" type="text/css" href="style.css">
-
     <script src="libraries/p5.min.js"></script>
-    <script src="libraries/p5.sound.min.js"></script>
+    <script src="libraries/ml5.min.js"></script>
   </head>
-
   <body>
+    <div id="ui">
+      <h1>攝影機手勢辨識</h1>
+      <p id="status">載入中，請允許相機存取...</p>
+      <p id="gesture">手勢：--</p>
+    </div>
     <script src="sketch.js"></script>
   </body>
 </html>

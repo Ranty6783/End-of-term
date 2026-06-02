@@ -7,6 +7,8 @@ const DROP_INTERVAL = 800; // ms
 let grid = [];
 let currentPiece = null;
 let gameRunning = true;
+let isGameOver = false;
+let score = 0;
 let lastDropTime = 0;
 let command = 'IDLE';
 let commandTimestamp = 0;
@@ -140,13 +142,51 @@ class Piece {
 function initGame() {
   grid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
   currentPiece = new Piece();
+  score = 0;
+  gameRunning = true;
+  isGameOver = false;
 }
 
 function spawnNewPiece() {
   currentPiece = new Piece();
   if (!currentPiece.canMove(0, 0)) {
     gameRunning = false;
+    isGameOver = true;
   }
+}
+
+function checkLineClears() {
+  const rowsToDelete = [];
+  
+  // 检测满行
+  for (let row = ROWS - 1; row >= 0; row--) {
+    let isFull = true;
+    for (let col = 0; col < COLS; col++) {
+      if (!grid[row][col]) {
+        isFull = false;
+        break;
+      }
+    }
+    if (isFull) {
+      rowsToDelete.push(row);
+    }
+  }
+  
+  // 消除满行
+  if (rowsToDelete.length > 0) {
+    // 从下到上删除
+    for (let i = rowsToDelete.length - 1; i >= 0; i--) {
+      grid.splice(rowsToDelete[i], 1);
+      grid.unshift(Array(COLS).fill(null));
+    }
+    
+    // 计分
+    const lineCount = rowsToDelete.length;
+    const scores = [0, 100, 300, 500, 800];
+    score += scores[lineCount] || 0;
+  }
+  
+  return rowsToDelete.length;
 }
 
 function drawGrid(offsetX, offsetY, p) {
@@ -385,6 +425,14 @@ const gameSketch = (p) => {
     canvas.parent('#game-container');
     initGame();
   };
+
+  p.keyPressed = function() {
+    if ((p.key === 'r' || p.key === 'R') && isGameOver) {
+      initGame();
+      return false;
+    }
+  };
+
   p.draw = function() {
     p.background(0);
     
@@ -393,16 +441,17 @@ const gameSketch = (p) => {
     
     drawGrid(offsetX, offsetY, p);
     
-    if (handModelReady && handDetected && gameRunning) {
+    if (handModelReady && handDetected && gameRunning && !isGameOver) {
       const now = p.millis();
       if (now - lastDropTime > DROP_INTERVAL) {
         if (!currentPiece.moveDown()) {
           currentPiece.lock();
+          checkLineClears();
           spawnNewPiece();
         }
         lastDropTime = now;
       }
-    } else {
+    } else if (!handModelReady || !handDetected) {
       p.fill(255);
       p.textSize(18);
       p.textAlign(p.CENTER, p.CENTER);
@@ -413,26 +462,44 @@ const gameSketch = (p) => {
       }
     }
     
-    if (command === 'LEFT' && commandTimestamp > 0) {
-      currentPiece.moveLeft();
-      command = 'IDLE';
-    } else if (command === 'RIGHT' && commandTimestamp > 0) {
-      currentPiece.moveRight();
-      command = 'IDLE';
-    } else if (command === 'ROTATE' && commandTimestamp > 0) {
-      currentPiece.rotate();
-      command = 'IDLE';
+    if (gameRunning && !isGameOver) {
+      if (command === 'LEFT' && commandTimestamp > 0) {
+        currentPiece.moveLeft();
+        command = 'IDLE';
+      } else if (command === 'RIGHT' && commandTimestamp > 0) {
+        currentPiece.moveRight();
+        command = 'IDLE';
+      } else if (command === 'ROTATE' && commandTimestamp > 0) {
+        currentPiece.rotate();
+        command = 'IDLE';
+      }
     }
     
-    if (currentPiece) {
+    if (currentPiece && !isGameOver) {
       currentPiece.draw(offsetX, offsetY, p);
     }
     
-    if (!gameRunning) {
+    // Display score in top-right corner
+    p.fill(255);
+    p.textSize(20);
+    p.textAlign(p.RIGHT, p.TOP);
+    p.text('Score: ' + score, p.width - 10, 10);
+    
+    if (isGameOver) {
+      p.fill(0, 0, 0, 200);
+      p.rect(0, 0, p.width, p.height);
+      
       p.fill(255, 0, 0);
-      p.textSize(32);
+      p.textSize(48);
       p.textAlign(p.CENTER, p.CENTER);
-      p.text('GAME OVER', p.width / 2, p.height / 2);
+      p.text('GAME OVER', p.width / 2, p.height / 2 - 60);
+      
+      p.fill(255);
+      p.textSize(32);
+      p.text('Score: ' + score, p.width / 2, p.height / 2 + 20);
+      
+      p.textSize(20);
+      p.text('按 R 鍵重新開始', p.width / 2, p.height / 2 + 80);
     }
   };
 };

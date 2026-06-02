@@ -1,7 +1,7 @@
 ﻿// ============= Global Game Variables =============
 const COLS = 10;
 const ROWS = 20;
-const BLOCK_SIZE = 25;
+const BLOCK_SIZE = 32;
 const DROP_INTERVAL = 800; // ms
 
 let grid = [];
@@ -10,6 +10,8 @@ let gameRunning = true;
 let lastDropTime = 0;
 let currentCommand = '--';
 let commandTimestamp = 0;
+let handModelReady = false;
+let handDetected = false;
 
 // Tetris pieces shapes and colors
 const TETROMINOES = {
@@ -182,14 +184,23 @@ const cameraSketch = (p) => {
   let gestureText;
   let commandText;
   let lastLRTime = 0;
+  let lastRotateTime = 0;
   const LR_COOLDOWN = 200;
+  const ROTATE_COOLDOWN = 500;
 
   p.setup = function() {
+    p.pixelDensity(1);
     const canvas = p.createCanvas(280, 210);
+    canvas.elt.style.width = '280px';
+    canvas.elt.style.height = '210px';
     canvas.parent('#camera-container');
 
-    video = p.createCapture(p.VIDEO);
-    video.size(280, 210);
+    video = p.createCapture({ video: { width: 1280, height: 720 } });
+    video.size(1280, 720);
+    video.elt.width = 1280;
+    video.elt.height = 720;
+    video.elt.style.width = '280px';
+    video.elt.style.height = '210px';
     video.hide();
 
     statusText = p.select('#status');
@@ -235,8 +246,11 @@ const cameraSketch = (p) => {
       }
 
       if (detected === 'CLOSE_PALM') {
-        currentCommand = 'ROTATE';
-        commandTimestamp = now;
+        if (now - lastRotateTime > ROTATE_COOLDOWN) {
+          currentCommand = 'ROTATE';
+          lastRotateTime = now;
+          commandTimestamp = now;
+        }
       }
     } else {
       gestureText.html('手勢：未偵測到手部');
@@ -246,21 +260,33 @@ const cameraSketch = (p) => {
   };
 
   function modelReady() {
+    handModelReady = true;
     statusText.html('模型已載入，請將手放入畫面中。');
   }
 
   function gotHands(results) {
     predictions = results;
+    if (predictions.length > 0) {
+      if (!handDetected) {
+        handDetected = true;
+        lastDropTime = p.millis();
+      }
+    }
   }
 
   function drawHand(prediction) {
     const landmarks = prediction.landmarks;
+    const scaleX = p.width / 1280;
+    const scaleY = p.height / 720;
+
     p.stroke(0, 255, 130);
     p.strokeWeight(2);
     p.noFill();
 
-    for (let i = 0; i < landmarks.length; i++) {
-      const [x, y] = landmarks[i];
+    const scaled = landmarks.map(([x, y]) => [x * scaleX, y * scaleY]);
+
+    for (let i = 0; i < scaled.length; i++) {
+      const [x, y] = scaled[i];
       p.ellipse(x, y, 8, 8);
     }
 
@@ -274,8 +300,8 @@ const cameraSketch = (p) => {
 
     for (let segment of connections) {
       const [i, j] = segment;
-      const [x1, y1] = landmarks[i];
-      const [x2, y2] = landmarks[j];
+      const [x1, y1] = scaled[i];
+      const [x2, y2] = scaled[j];
       p.line(x1, y1, x2, y2);
     }
   }
@@ -319,11 +345,13 @@ const cameraSketch = (p) => {
 // ============= Game Sketch (Instance Mode) =============
 const gameSketch = (p) => {
   p.setup = function() {
+    p.pixelDensity(1);
     const canvas = p.createCanvas(COLS * BLOCK_SIZE, ROWS * BLOCK_SIZE);
+    canvas.elt.style.width = `${COLS * BLOCK_SIZE}px`;
+    canvas.elt.style.height = `${ROWS * BLOCK_SIZE}px`;
     canvas.parent('#game-container');
     initGame();
   };
-
   p.draw = function() {
     p.background(0);
     
@@ -332,13 +360,24 @@ const gameSketch = (p) => {
     
     drawGrid(offsetX, offsetY, p);
     
-    const now = p.millis();
-    if (now - lastDropTime > DROP_INTERVAL) {
-      if (!currentPiece.moveDown()) {
-        currentPiece.lock();
-        spawnNewPiece();
+    if (handModelReady && handDetected && gameRunning) {
+      const now = p.millis();
+      if (now - lastDropTime > DROP_INTERVAL) {
+        if (!currentPiece.moveDown()) {
+          currentPiece.lock();
+          spawnNewPiece();
+        }
+        lastDropTime = now;
       }
-      lastDropTime = now;
+    } else {
+      p.fill(255);
+      p.textSize(18);
+      p.textAlign(p.CENTER, p.CENTER);
+      if (!handModelReady) {
+        p.text('等待手勢模型載入...', p.width / 2, p.height / 2);
+      } else {
+        p.text('偵測到手勢後開始下落', p.width / 2, p.height / 2);
+      }
     }
     
     if (currentCommand === 'LEFT' && commandTimestamp > 0) {
